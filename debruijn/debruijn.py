@@ -65,6 +65,33 @@ def get_arguments():
     return parser.parse_args()
 
 
+def read_fastq(fastq):
+    with open(fastq, "r") as filin:
+        for line in filin:
+            yield(next(filin).strip())
+            next(filin)
+            next(filin)
+
+
+def cut_kmer(seq, k):
+    for base in range(len(seq)-k+1):
+        yield(seq[base:base+k])
+
+
+def build_kmer_dict(fastq, k):
+    dict_kmer = {}
+    for seq in read_fastq(fastq):
+        for kmer in cut_kmer(seq, k):
+            if not kmer in dict_kmer:
+                dict_kmer[kmer] = 1
+            else:
+                dict_kmer[kmer] += 1
+    return(dict_kmer)
+
+
+def build_graph(dict_kmer):
+    pass
+
 #==============================================================
 # Main program
 #==============================================================
@@ -76,4 +103,9 @@ def main():
     args = get_arguments()
 
 if __name__ == '__main__':
+
+    for i in cut_kmer("ATTTACCGGAGCGATT", 7):
+        print(i)
     main()
+
+
