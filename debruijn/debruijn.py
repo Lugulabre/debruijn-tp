@@ -10,26 +10,25 @@
 #    GNU General Public License for more details.
 #    A copy of the GNU General Public License is available at
 #    http://www.gnu.org/licenses/gpl-3.0.html
-
-import statistics
-from random import randint
-"""Perform assembly based on debruijn graph."""
-
 import argparse
+from operator import itemgetter
 import os
+import random
+from random import randint
+import statistics
 import sys
 import networkx as nx
-from operator import itemgetter
-import random
+"""Perform assembly based on debruijn graph."""
+
 random.seed(9001)
 
-__author__ = "Your Name"
-__copyright__ = "Universite Paris Diderot"
-__credits__ = ["Your Name"]
+__author__ = "Pretet Mael"
+__copyright__ = "Universite de Paris"
+__credits__ = ["Pretet"]
 __license__ = "GPL"
 __version__ = "1.0.0"
-__maintainer__ = "Your Name"
-__email__ = "your@email.fr"
+__maintainer__ = "Pretet"
+__email__ = "pretetmael@gmail.com"
 __status__ = "Developpement"
 
 
@@ -98,47 +97,46 @@ def build_kmer_dict(fastq, k):
 def build_graph(dict_kmer):
     '''Créer graphe à partir des k-mers
     '''
-    G = nx.DiGraph()
+    graph = nx.DiGraph()
     for key, value in dict_kmer.items():
-        a = key[:-1]
-        b = key[1:]
-        G.add_node(a)
-        G.add_node(b)
-        G.add_edge(a, b, weight=value)
-    #nx.draw(G, with_labels = True)
-    # plt.show()
-    return G
+        key_pre = key[:-1]
+        key_suf = key[1:]
+        graph.add_node(key_pre)
+        graph.add_node(key_suf)
+        graph.add_edge(key_pre, key_suf, weight=value)
+
+    return graph
 
 
-def get_starting_nodes(g):
-    '''Trouver nœuds d'entrée
+def get_starting_nodes(graph):
+    '''Trouver noeuds d'entrée
     '''
     list_start = []
-    for node in g.nodes.data():
-        if not list(g.predecessors(node[0])):
+    for node in graph.nodes.data():
+        if not list(graph.predecessors(node[0])):
             list_start.append(node[0])
 
     return list_start
 
 
-def get_sink_nodes(g):
-    '''Trouver nœuds de sortie
+def get_sink_nodes(graph):
+    '''Trouver noeuds de sortie
     '''
     list_end = []
-    for node in g.nodes.data():
-        if not list(g.successors(node[0])):
+    for node in graph.nodes.data():
+        if not list(graph.successors(node[0])):
             list_end.append(node[0])
 
     return list_end
 
 
-def get_contigs(g, list_start, list_end):
+def get_contigs(graph, list_start, list_end):
     '''Retourner tuple de contigs
     '''
     list_contig = []
     for start in list_start:
         for end in list_end:
-            for path in nx.all_simple_paths(g, start, end):
+            for path in nx.all_simple_paths(graph, start, end):
                 contig = path[0]
                 for i in range(1, len(path)):
                     contig += path[i][-1]
@@ -149,7 +147,8 @@ def get_contigs(g, list_start, list_end):
 
 
 def fill(text, width=80):
-    """Split text with a line return to respect fasta format"""
+    '''Split text with a line return to respect fasta format
+    '''
     return os.linesep.join(text[i:i+width] for i in range(0, len(text), width))
 
 
@@ -167,6 +166,8 @@ def save_contigs(list_tupple, filename):
 def std(list_val):
     '''Calcul écart-type d'une liste de valeurs
     '''
+    if len(list_val) == 1:
+        return 0
     return statistics.stdev(list_val)
 
 
@@ -195,21 +196,27 @@ def remove_paths(graph, list_path, delete_entry_node, delete_sink_node):
     return graph
 
 
-def select_best_path(graph, list_path, list_len_path, list_weight_path, delete_entry_node=False, delete_sink_node=False):
-    max_weight = max(list_weight_path)
-    max_length = max(list_len_path)
+def select_best_path(graph, list_path, list_len, list_weight, 
+    delete_entry_node=False, delete_sink_node=False):
+    '''Sélectionner le meilleur chemin d'une liste de chemin
+    '''
+    max_weight = max(list_weight)
+    max_length = max(list_len)
     pos_max = list(range(0, len(list_path)))
     del_path = []
+    pos_tmp = list(pos_max)
 
-    if std(list_weight_path) != 0:
-        for i in pos_max:
-            if list_weight_path[i] < max_weight:
+    if std(list_weight) != 0:
+        for i in pos_tmp:
+            if list_weight[i] < max_weight:
                 del_path.append(list_path[i])
                 pos_max.remove(i)
 
-    if std(list_len_path) != 0:
-        for i in pos_max:
-            if list_len_path[i] < max_length:
+    list_len = [list_len[i] for i in pos_max]
+    pos_tmp = list(pos_max)
+    if len(pos_max) > 1 and std(list_len) != 0:
+        for i in pos_tmp:
+            if list_len[i] < max_length:
                 del_path.append(list_path[i])
                 pos_max.remove(i)
 
@@ -219,24 +226,53 @@ def select_best_path(graph, list_path, list_len_path, list_weight_path, delete_e
         for i in pos_max:
             del_path.append(list_path[i])
 
-    graph = remove_paths(graph, del_path, delete_entry_node, delete_sink_node)
+    return remove_paths(graph, del_path, delete_entry_node, delete_sink_node)
+
+
+def solve_bubble(graph, ancetre, descend):
+    '''Résoudre une bulle donnée en entrée en conservant le meilleur chemin
+    '''
+    list_path = []
+    list_weight = []
+    list_len = []
+    for path in nx.all_simple_paths(graph, ancetre, descend):
+        list_path.append(path)
+        list_weight.append(path_average_weight(graph, path))
+        list_len.append(len(path))
+
+    print("path", list_path)
+    print("weight", list_weight)
+    print("len", list_len)
+    return select_best_path(graph, list_path, list_len, list_weight)
+
+
+def simplify_bubbles(graph):
+    '''Trouver les bulles présentes dans un graphe et les résoudre
+    '''
+    list_bubble = []
+    for node in graph.nodes:
+        list_predecessors = list(graph.predecessors(node))
+        if len(list_predecessors) > 1:
+            lwca = nx.lowest_common_ancestor(graph, list_predecessors[0], list_predecessors[1], default = -1)
+            list_bubble.append([lwca, node])
+
+    for i in range(0, len(list_bubble)):
+        graph = solve_bubble(graph, list_bubble[i][0], list_bubble[i][1])
 
     return graph
 
 
-def solve_bubble():
+def solve_entry_tips(graph, list_in):
+    '''Nettoie les entrées indésirables d'un graphe
+    '''
     pass
 
 
-def simplify_bubbles():
-    pass
-
-
-def solve_entry_tips():
-    pass
-
-
-def solve_out_tips():
+def solve_out_tips(graph, list_out):
+    '''Nettoie les sorties indésirables d'un graphe
+    '''
+    if len(list_out) > 1:
+        pass
     pass
 
 # ==============================================================
@@ -254,10 +290,13 @@ def main():
 
 if __name__ == '__main__':
 
-    g = build_graph(build_kmer_dict("data/eva71_two_reads.fq", 9))
-    start = get_starting_nodes(g)
-    end = get_sink_nodes(g)
-    contig = get_contigs(g, start, end)
-    save_contigs(contig, "output.fasta")
+    #g = build_graph(build_kmer_dict("data/eva71_two_reads.fq", 9))
+    #begin = get_starting_nodes(g)
+    #ending = get_sink_nodes(g)
+    #contig = get_contigs(g, begin, ending)
+    #save_contigs(contig, "output.fasta")
+    #nx.draw(G, with_labels = True)
+    # plt.show()
 
     main()
+
