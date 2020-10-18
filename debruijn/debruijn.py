@@ -240,9 +240,6 @@ def solve_bubble(graph, ancetre, descend):
         list_weight.append(path_average_weight(graph, path))
         list_len.append(len(path))
 
-    print("path", list_path)
-    print("weight", list_weight)
-    print("len", list_len)
     return select_best_path(graph, list_path, list_len, list_weight)
 
 
@@ -265,15 +262,68 @@ def simplify_bubbles(graph):
 def solve_entry_tips(graph, list_in):
     '''Nettoie les entrées indésirables d'un graphe
     '''
-    pass
+    if len(list_in) > 1:
+        for node_in in list_in:
+            list_descendants = nx.descendants(graph, node_in)
+            for descendant in list_descendants:
+                list_predecessors = list(graph.predecessors(descendant))
+                if len(list_predecessors) > 1:
+                    list_path = []
+                    list_weight = []
+                    list_len = []
+                    entry_ancestors = []
+                    for entry in nx.ancestors(graph, descendant):
+                        if entry in list_in:
+                            entry_ancestors.append(entry)
+
+                    for entry in entry_ancestors:
+                        path_to_test = nx.shortest_path(graph, entry, descendant)
+                        list_path.append(path_to_test)
+                        list_weight.append(path_average_weight(graph, path_to_test))
+                        list_len.append(len(path_to_test))
+
+                    graph = select_best_path(graph, list_path, list_len, list_weight, True, False)
+                    list_in_actual = []
+                    for entry in list_in:
+                        if entry in list(graph.nodes):
+                            list_in_actual.append(entry)
+                    return solve_entry_tips(graph, list_in_actual)
+
+    return graph
 
 
 def solve_out_tips(graph, list_out):
     '''Nettoie les sorties indésirables d'un graphe
     '''
     if len(list_out) > 1:
-        pass
-    pass
+        for node_out in list_out:
+            list_ancestors = nx.ancestors(graph, node_out)
+            for ancestor in list_ancestors:
+                list_successors = list(graph.successors(ancestor))
+                if len(list_successors) > 1:
+                    list_path = []
+                    list_weight = []
+                    list_len = []
+                    exit_descendants = []
+                    for exit in nx.descendants(graph, ancestor):
+                        if exit in list_out:
+                            exit_descendants.append(exit)
+
+                    for exit in exit_descendants:
+                        path_to_test = nx.shortest_path(graph, ancestor, exit)
+                        list_path.append(path_to_test)
+                        list_weight.append(path_average_weight(graph, path_to_test))
+                        list_len.append(len(path_to_test))
+
+                    graph = select_best_path(graph, list_path, list_len, list_weight, False, True)
+                    list_out_actual = []
+                    for exit in list_out:
+                        if exit in list(graph.nodes):
+                            list_out_actual.append(exit)
+                    return solve_entry_tips(graph, list_out_actual)
+
+    return graph
+
 
 # ==============================================================
 # Main program
@@ -286,17 +336,17 @@ def main():
     """
     # Get arguments
     args = get_arguments()
+    kmer_dict = build_kmer_dict(args.fastq_file, args.kmer_size)
+    G = build_graph(kmer_dict)
+    ls = get_starting_nodes(G)
+    le = get_sink_nodes(G)
+    G = simplify_bubbles(G)
+    G = solve_entry_tips(G, ls)
+    G = solve_out_tips(G, le)
+    lc = get_contigs(G, ls, le)
+    save_contigs(lc, args.output_file)
 
 
 if __name__ == '__main__':
-
-    #g = build_graph(build_kmer_dict("data/eva71_two_reads.fq", 9))
-    #begin = get_starting_nodes(g)
-    #ending = get_sink_nodes(g)
-    #contig = get_contigs(g, begin, ending)
-    #save_contigs(contig, "output.fasta")
-    #nx.draw(G, with_labels = True)
-    # plt.show()
-
     main()
 
