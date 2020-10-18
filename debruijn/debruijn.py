@@ -11,14 +11,13 @@
 #    A copy of the GNU General Public License is available at
 #    http://www.gnu.org/licenses/gpl-3.0.html
 import argparse
-from operator import itemgetter
 import os
 import random
 from random import randint
 import statistics
 import sys
 import networkx as nx
-"""Perform assembly based on debruijn graph."""
+'''Perform assembly based on debruijn graph.'''
 
 random.seed(9001)
 
@@ -47,9 +46,9 @@ def isfile(path):
 
 
 def get_arguments():
-    """Retrieves the arguments of the program.
+    '''Retrieves the arguments of the program.
       Returns: An object that contains the arguments
-    """
+    '''
     # Parsing arguments
     parser = argparse.ArgumentParser(description=__doc__, usage="{0} -h"
                                      .format(sys.argv[0]))
@@ -172,6 +171,8 @@ def std(list_val):
 
 
 def path_average_weight(graph, path):
+    '''Calcul le poids moyen d'un chemin
+    '''
     weight = 0
     for i in range(len(path)-1):
         weight += graph.edges[path[i], path[i+1]]["weight"]
@@ -196,8 +197,8 @@ def remove_paths(graph, list_path, delete_entry_node, delete_sink_node):
     return graph
 
 
-def select_best_path(graph, list_path, list_len, list_weight, 
-    delete_entry_node=False, delete_sink_node=False):
+def select_best_path(graph, list_path, list_len, list_weight,
+                     delete_entry_node=False, delete_sink_node=False):
     '''Sélectionner le meilleur chemin d'une liste de chemin
     '''
     max_weight = max(list_weight)
@@ -221,7 +222,7 @@ def select_best_path(graph, list_path, list_len, list_weight,
                 pos_max.remove(i)
 
     if len(pos_max) > 1:
-        keep_branch = randint(0,len(pos_max))
+        keep_branch = randint(0, len(pos_max))
         pos_max.remove(keep_branch)
         for i in pos_max:
             del_path.append(list_path[i])
@@ -250,7 +251,8 @@ def simplify_bubbles(graph):
     for node in graph.nodes:
         list_predecessors = list(graph.predecessors(node))
         if len(list_predecessors) > 1:
-            lwca = nx.lowest_common_ancestor(graph, list_predecessors[0], list_predecessors[1], default = -1)
+            lwca = nx.lowest_common_ancestor(graph, list_predecessors[0],
+                                             list_predecessors[1], default=-1)
             list_bubble.append([lwca, node])
 
     for i in range(0, len(list_bubble)):
@@ -277,12 +279,15 @@ def solve_entry_tips(graph, list_in):
                             entry_ancestors.append(entry)
 
                     for entry in entry_ancestors:
-                        path_to_test = nx.shortest_path(graph, entry, descendant)
+                        path_to_test = nx.shortest_path(
+                            graph, entry, descendant)
                         list_path.append(path_to_test)
-                        list_weight.append(path_average_weight(graph, path_to_test))
+                        list_weight.append(
+                            path_average_weight(graph, path_to_test))
                         list_len.append(len(path_to_test))
 
-                    graph = select_best_path(graph, list_path, list_len, list_weight, True, False)
+                    graph = select_best_path(
+                        graph, list_path, list_len, list_weight, True, False)
                     list_in_actual = []
                     for entry in list_in:
                         if entry in list(graph.nodes):
@@ -305,21 +310,23 @@ def solve_out_tips(graph, list_out):
                     list_weight = []
                     list_len = []
                     exit_descendants = []
-                    for exit in nx.descendants(graph, ancestor):
-                        if exit in list_out:
-                            exit_descendants.append(exit)
+                    for end in nx.descendants(graph, ancestor):
+                        if end in list_out:
+                            exit_descendants.append(end)
 
-                    for exit in exit_descendants:
-                        path_to_test = nx.shortest_path(graph, ancestor, exit)
+                    for end in exit_descendants:
+                        path_to_test = nx.shortest_path(graph, ancestor, end)
                         list_path.append(path_to_test)
-                        list_weight.append(path_average_weight(graph, path_to_test))
+                        list_weight.append(
+                            path_average_weight(graph, path_to_test))
                         list_len.append(len(path_to_test))
 
-                    graph = select_best_path(graph, list_path, list_len, list_weight, False, True)
+                    graph = select_best_path(
+                        graph, list_path, list_len, list_weight, False, True)
                     list_out_actual = []
-                    for exit in list_out:
-                        if exit in list(graph.nodes):
-                            list_out_actual.append(exit)
+                    for end in list_out:
+                        if end in list(graph.nodes):
+                            list_out_actual.append(end)
                     return solve_entry_tips(graph, list_out_actual)
 
     return graph
@@ -337,16 +344,15 @@ def main():
     # Get arguments
     args = get_arguments()
     kmer_dict = build_kmer_dict(args.fastq_file, args.kmer_size)
-    G = build_graph(kmer_dict)
-    ls = get_starting_nodes(G)
-    le = get_sink_nodes(G)
-    G = simplify_bubbles(G)
-    G = solve_entry_tips(G, ls)
-    G = solve_out_tips(G, le)
-    lc = get_contigs(G, ls, le)
-    save_contigs(lc, args.output_file)
+    graph_final = build_graph(kmer_dict)
+    list_start_nodes = get_starting_nodes(graph_final)
+    list_end_nodes = get_sink_nodes(graph_final)
+    graph_final = simplify_bubbles(graph_final)
+    graph_final = solve_entry_tips(graph_final, list_start_nodes)
+    graph_final = solve_out_tips(graph_final, list_end_nodes)
+    list_contigs = get_contigs(graph_final, list_start_nodes, list_end_nodes)
+    save_contigs(list_contigs, args.output_file)
 
 
 if __name__ == '__main__':
     main()
-
