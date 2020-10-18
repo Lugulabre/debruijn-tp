@@ -10,29 +10,27 @@
 #    GNU General Public License for more details.
 #    A copy of the GNU General Public License is available at
 #    http://www.gnu.org/licenses/gpl-3.0.html
-
-"""Perform assembly based on debruijn graph."""
-
 import argparse
-import os
-import sys
-import networkx as nx
-import matplotlib
-import matplotlib.pyplot as plt
 from operator import itemgetter
+import os
 import random
-random.seed(9001)
 from random import randint
 import statistics
+import sys
+import networkx as nx
+"""Perform assembly based on debruijn graph."""
 
-__author__ = "Your Name"
-__copyright__ = "Universite Paris Diderot"
-__credits__ = ["Your Name"]
+random.seed(9001)
+
+__author__ = "Pretet Mael"
+__copyright__ = "Universite de Paris"
+__credits__ = ["Pretet"]
 __license__ = "GPL"
 __version__ = "1.0.0"
-__maintainer__ = "Your Name"
-__email__ = "your@email.fr"
+__maintainer__ = "Pretet"
+__email__ = "pretetmael@gmail.com"
 __status__ = "Developpement"
+
 
 def isfile(path):
     """Check if path is an existing file.
@@ -53,8 +51,7 @@ def get_arguments():
       Returns: An object that contains the arguments
     """
     # Parsing arguments
-    parser = argparse.ArgumentParser(description=__doc__, usage=
-                                     "{0} -h"
+    parser = argparse.ArgumentParser(description=__doc__, usage="{0} -h"
                                      .format(sys.argv[0]))
     parser.add_argument('-i', dest='fastq_file', type=isfile,
                         required=True, help="Fastq file")
@@ -71,7 +68,7 @@ def read_fastq(fastq):
     '''
     with open(fastq, "r") as filin:
         for line in filin:
-            yield(next(filin).strip())
+            yield next(filin).strip()
             next(filin)
             next(filin)
 
@@ -80,7 +77,7 @@ def cut_kmer(seq, k):
     '''Renvoie les k-mer de taille k d'une séquence
     '''
     for base in range(len(seq)-k+1):
-        yield(seq[base:base+k])
+        yield seq[base:base+k]
 
 
 def build_kmer_dict(fastq, k):
@@ -94,60 +91,64 @@ def build_kmer_dict(fastq, k):
             else:
                 dict_kmer[kmer] += 1
 
-    return(dict_kmer)
+    return dict_kmer
 
 
 def build_graph(dict_kmer):
     '''Créer graphe à partir des k-mers
     '''
-    G = nx.DiGraph()
+    graph = nx.DiGraph()
     for key, value in dict_kmer.items():
-        a = key[:-1]
-        b = key[1:]
-        G.add_node(a)
-        G.add_node(b)
-        G.add_edge(a, b, weight = value)
-    #nx.draw(G, with_labels = True)
-    #plt.show()
-    return(G)
+        key_pre = key[:-1]
+        key_suf = key[1:]
+        graph.add_node(key_pre)
+        graph.add_node(key_suf)
+        graph.add_edge(key_pre, key_suf, weight=value)
+
+    return graph
 
 
-def get_starting_nodes(G):
-    '''Trouver nœuds d'entrée
+def get_starting_nodes(graph):
+    '''Trouver noeuds d'entrée
     '''
     list_start = []
-    for node in G.nodes.data():
-        if not list(g.predecessors(node[0])):
+    for node in graph.nodes.data():
+        if not list(graph.predecessors(node[0])):
             list_start.append(node[0])
 
-    return(list_start)
+    return list_start
 
 
-def get_sink_nodes(G):
-    '''Trouver nœuds de sortie
+def get_sink_nodes(graph):
+    '''Trouver noeuds de sortie
     '''
     list_end = []
-    for node in G.nodes.data():
-        if not list(g.successors(node[0])):
+    for node in graph.nodes.data():
+        if not list(graph.successors(node[0])):
             list_end.append(node[0])
 
-    return(list_end)
+    return list_end
 
 
-def get_contigs(g, list_start, list_end):
+def get_contigs(graph, list_start, list_end):
     '''Retourner tuple de contigs
     '''
     list_contig = []
     for start in list_start:
         for end in list_end:
-            for path in nx.all_simple_paths(g, start, end):
-                list_contig.append((path, len(path)))
+            for path in nx.all_simple_paths(graph, start, end):
+                contig = path[0]
+                for i in range(1, len(path)):
+                    contig += path[i][-1]
 
-    return(list_contig)
+                list_contig.append((contig, len(contig)))
+
+    return list_contig
 
 
 def fill(text, width=80):
-    """Split text with a line return to respect fasta format"""
+    '''Split text with a line return to respect fasta format
+    '''
     return os.linesep.join(text[i:i+width] for i in range(0, len(text), width))
 
 
@@ -156,16 +157,129 @@ def save_contigs(list_tupple, filename):
     '''
     with open(filename, "w") as filout:
         for i in range(len(list_tupple)):
-            contig = "".join(list_tupple[i][0][0])
-            for read in range(1, len(list_tupple[i][0])):
-                contig = contig + list_tupple[i][0][read][-1]
+            contig = list_tupple[i][0]
+            l_contig = list_tupple[i][1]
+            filout.write(">contig_{} len={}\n{}\n".format(
+                i, l_contig, fill(contig)))
 
-            filout.write(">contig_{} len={}\n{}\n".format(i, len(contig), fill(contig)))
+
+def std(list_val):
+    '''Calcul écart-type d'une liste de valeurs
+    '''
+    if len(list_val) == 1:
+        return 0
+    return statistics.stdev(list_val)
 
 
-#==============================================================
+def path_average_weight(graph, path):
+    weight = 0
+    for i in range(len(path)-1):
+        weight += graph.edges[path[i], path[i+1]]["weight"]
+
+    return weight/(len(path)-1)
+
+
+def remove_paths(graph, list_path, delete_entry_node, delete_sink_node):
+    '''Supprimer un chemin donné du graphique
+    '''
+    start = 1
+    end = 1
+    if delete_entry_node:
+        start = 0
+    if delete_sink_node:
+        end = 0
+
+    for path in list_path:
+        for node in range(start, len(path)-end):
+            graph.remove_node(path[node])
+
+    return graph
+
+
+def select_best_path(graph, list_path, list_len, list_weight, 
+    delete_entry_node=False, delete_sink_node=False):
+    '''Sélectionner le meilleur chemin d'une liste de chemin
+    '''
+    max_weight = max(list_weight)
+    max_length = max(list_len)
+    pos_max = list(range(0, len(list_path)))
+    del_path = []
+    pos_tmp = list(pos_max)
+
+    if std(list_weight) != 0:
+        for i in pos_tmp:
+            if list_weight[i] < max_weight:
+                del_path.append(list_path[i])
+                pos_max.remove(i)
+
+    list_len = [list_len[i] for i in pos_max]
+    pos_tmp = list(pos_max)
+    if len(pos_max) > 1 and std(list_len) != 0:
+        for i in pos_tmp:
+            if list_len[i] < max_length:
+                del_path.append(list_path[i])
+                pos_max.remove(i)
+
+    if len(pos_max) > 1:
+        keep_branch = randint(0,len(pos_max))
+        pos_max.remove(keep_branch)
+        for i in pos_max:
+            del_path.append(list_path[i])
+
+    return remove_paths(graph, del_path, delete_entry_node, delete_sink_node)
+
+
+def solve_bubble(graph, ancetre, descend):
+    '''Résoudre une bulle donnée en entrée en conservant le meilleur chemin
+    '''
+    list_path = []
+    list_weight = []
+    list_len = []
+    for path in nx.all_simple_paths(graph, ancetre, descend):
+        list_path.append(path)
+        list_weight.append(path_average_weight(graph, path))
+        list_len.append(len(path))
+
+    print("path", list_path)
+    print("weight", list_weight)
+    print("len", list_len)
+    return select_best_path(graph, list_path, list_len, list_weight)
+
+
+def simplify_bubbles(graph):
+    '''Trouver les bulles présentes dans un graphe et les résoudre
+    '''
+    list_bubble = []
+    for node in graph.nodes:
+        list_predecessors = list(graph.predecessors(node))
+        if len(list_predecessors) > 1:
+            lwca = nx.lowest_common_ancestor(graph, list_predecessors[0], list_predecessors[1], default = -1)
+            list_bubble.append([lwca, node])
+
+    for i in range(0, len(list_bubble)):
+        graph = solve_bubble(graph, list_bubble[i][0], list_bubble[i][1])
+
+    return graph
+
+
+def solve_entry_tips(graph, list_in):
+    '''Nettoie les entrées indésirables d'un graphe
+    '''
+    pass
+
+
+def solve_out_tips(graph, list_out):
+    '''Nettoie les sorties indésirables d'un graphe
+    '''
+    if len(list_out) > 1:
+        pass
+    pass
+
+# ==============================================================
 # Main program
-#==============================================================
+# ==============================================================
+
+
 def main():
     """
     Main program function
@@ -173,14 +287,16 @@ def main():
     # Get arguments
     args = get_arguments()
 
+
 if __name__ == '__main__':
 
-    g = build_graph(build_kmer_dict("../data/eva71_two_reads.fq", 20))
-    start = get_starting_nodes(g)
-    end = get_sink_nodes(g)
-    contig = get_contigs(g, start, end)
-    save_contigs(contig, "output.fasta")
+    #g = build_graph(build_kmer_dict("data/eva71_two_reads.fq", 9))
+    #begin = get_starting_nodes(g)
+    #ending = get_sink_nodes(g)
+    #contig = get_contigs(g, begin, ending)
+    #save_contigs(contig, "output.fasta")
+    #nx.draw(G, with_labels = True)
+    # plt.show()
 
     main()
-
 
